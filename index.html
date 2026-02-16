@@ -18,16 +18,20 @@
         <div id="riskAlert" class="risk-alert risk-neutral">Run check to get decision.</div>
         <div class="metrics">
           <div class="metric-item">
+            <div class="metric-label">Is New User</div>
+            <div id="isNewUser" class="metric-value">-</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">Is Legit User</div>
+            <div id="isLegitUser" class="metric-value">-</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">Legitimacy Score</div>
+            <div id="legitimacyScore" class="metric-value">-</div>
+          </div>
+          <div class="metric-item">
             <div class="metric-label">Risk Score</div>
             <div id="riskScore" class="metric-value">-</div>
-          </div>
-          <div class="metric-item">
-            <div class="metric-label">User Status</div>
-            <div id="userStatus" class="metric-value">-</div>
-          </div>
-          <div class="metric-item">
-            <div class="metric-label">Decision</div>
-            <div id="decisionStatus" class="metric-value">-</div>
           </div>
         </div>
       </section>
@@ -58,7 +62,10 @@
           <input id="linkedId" type="text" placeholder="user-123" />
         </label>
 
-        <button id="runCheck">Run check</button>
+        <button id="runCheck">
+          <span id="runCheckSpinner" class="button-spinner" aria-hidden="true"></span>
+          <span id="runCheckLabel">Run check</span>
+        </button>
       </section>
 
       <section class="card">

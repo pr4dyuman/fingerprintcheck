@@ -3,6 +3,7 @@ const regionInput = document.getElementById("region");
 const backendUrlInput = document.getElementById("backendUrl");
 const linkedIdInput = document.getElementById("linkedId");
 const runCheckButton = document.getElementById("runCheck");
+const runCheckLabel = document.getElementById("runCheckLabel");
 
 const summary = document.getElementById("summary");
 const signalList = document.getElementById("signalList");
@@ -10,9 +11,10 @@ const fpResultView = document.getElementById("fpResultView");
 const payloadView = document.getElementById("payloadView");
 const responseView = document.getElementById("responseView");
 const riskAlert = document.getElementById("riskAlert");
+const isNewUserView = document.getElementById("isNewUser");
+const isLegitUserView = document.getElementById("isLegitUser");
+const legitimacyScoreView = document.getElementById("legitimacyScore");
 const riskScoreView = document.getElementById("riskScore");
-const userStatusView = document.getElementById("userStatus");
-const decisionStatusView = document.getElementById("decisionStatus");
 
 const STORAGE_KEYS = {
   apiKey: "fp_api_key",
@@ -49,6 +51,12 @@ function setSummary(text, status = "neutral") {
     status === "ok" ? "#14532d" : status === "warn" ? "#78350f" : "#334155";
 }
 
+function setLoadingState(isLoading) {
+  runCheckButton.disabled = isLoading;
+  runCheckButton.classList.toggle("is-loading", isLoading);
+  runCheckLabel.textContent = isLoading ? "Checking..." : "Run check";
+}
+
 function setRiskAlert(level, text) {
   riskAlert.className = "risk-alert";
   if (level === "high") {
@@ -64,14 +72,24 @@ function setRiskAlert(level, text) {
 }
 
 function updateDecisionMetrics(responseJson) {
-  const score = Number(responseJson?.riskScore);
-  const scoreText = Number.isFinite(score) ? String(score) : "-";
-  const userStatus = responseJson?.isNewUser ? "NEW USER" : "RETURNING";
-  const decision = responseJson?.decision || "-";
+  if (!responseJson?.ok) {
+    isNewUserView.textContent = "-";
+    isLegitUserView.textContent = "-";
+    legitimacyScoreView.textContent = "-";
+    riskScoreView.textContent = "-";
+    return;
+  }
 
-  riskScoreView.textContent = scoreText;
-  userStatusView.textContent = responseJson?.ok ? userStatus : "-";
-  decisionStatusView.textContent = responseJson?.ok ? decision.toUpperCase() : "-";
+  const riskScore = Number(responseJson?.riskScore);
+  const safeRisk = Number.isFinite(riskScore) ? Math.max(0, Math.min(riskScore, 100)) : 100;
+  const legitimacyScore = Math.max(0, 100 - safeRisk);
+  const isNewUser = Boolean(responseJson?.isNewUser);
+  const isLegitUser = !Boolean(responseJson?.isFraudSuspected) && responseJson?.decision === "allow";
+
+  isNewUserView.textContent = isNewUser ? "YES" : "NO";
+  isLegitUserView.textContent = isLegitUser ? "YES" : "NO";
+  legitimacyScoreView.textContent = `${legitimacyScore}/100`;
+  riskScoreView.textContent = `${safeRisk}/100`;
 }
 
 function renderBackendDecision(responseJson) {
@@ -88,17 +106,17 @@ function renderBackendDecision(responseJson) {
   if (responseJson.isFraudSuspected) {
     setRiskAlert(
       "high",
-      `ALERT: Fraud suspected. Decision: ${responseJson.decision}.${reasonText}`,
+      `ALERT: Fraud suspected. Is legit: NO.${reasonText}`,
     );
     return;
   }
 
   if (responseJson.isNewUser) {
-    setRiskAlert("medium", `New user detected. Decision: ${responseJson.decision}.${reasonText}`);
+    setRiskAlert("medium", `New user detected. Verify once. Is legit: review.${reasonText}`);
     return;
   }
 
-  setRiskAlert("low", `Returning user recognized. Decision: ${responseJson.decision}.${reasonText}`);
+  setRiskAlert("low", `Returning user recognized. Is legit: YES.${reasonText}`);
 }
 
 function persistSettings() {
@@ -192,7 +210,7 @@ async function runCheck() {
     return;
   }
 
-  runCheckButton.disabled = true;
+  setLoadingState(true);
   setSummary("Running FingerprintJS Pro check...");
 
   try {
@@ -256,7 +274,7 @@ async function runCheck() {
     setSummary(`Failed to run check: ${error.message}`, "warn");
     renderBackendDecision({ ok: false });
   } finally {
-    runCheckButton.disabled = false;
+    setLoadingState(false);
   }
 }
 
