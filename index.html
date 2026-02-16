@@ -13,6 +13,25 @@
         Collect enhanced browser/device data and send it to your backend for risk checks.
       </p>
 
+      <section class="card alert-card">
+        <h2>Live Decision</h2>
+        <div id="riskAlert" class="risk-alert risk-neutral">Run check to get decision.</div>
+        <div class="metrics">
+          <div class="metric-item">
+            <div class="metric-label">Risk Score</div>
+            <div id="riskScore" class="metric-value">-</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">User Status</div>
+            <div id="userStatus" class="metric-value">-</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">Decision</div>
+            <div id="decisionStatus" class="metric-value">-</div>
+          </div>
+        </div>
+      </section>
+
       <section class="card">
         <h2>Configuration</h2>
         <label>
@@ -31,7 +50,7 @@
 
         <label>
           Backend endpoint
-          <input id="backendUrl" type="text" placeholder="http://localhost:3000/api/track-visitor" />
+          <input id="backendUrl" type="text" value="http://localhost:3100/api/track-visitor" />
         </label>
 
         <label>

@@ -1,5 +1,13 @@
 # FingerprintJS Pro Frontend (Render + Supabase flow)
 
+## Setup order (do this first)
+
+1. Configure Supabase and run [backend/supabase.sql](backend/supabase.sql).
+2. Configure and deploy backend on Render.
+3. Connect frontend to deployed backend URL.
+
+This order avoids backend errors from missing tables/keys.
+
 This frontend collects:
 - FingerprintJS Pro `extendedResult`
 - Browser/device signals (`userAgent`, timezone, screen, language, etc.)
@@ -13,7 +21,9 @@ The UI in [index.html](index.html) + [app.js](app.js):
 2. Calls `fp.get({ extendedResult: true })`.
 3. Adds extra client signals.
 4. Sends a JSON payload to your backend.
-5. Shows backend result (e.g., `isNewUser`, `riskLabel`).
+5. Shows backend result (e.g., `isNewUser`, `riskLabel`, `riskScore`, `isFraudSuspected`).
+6. Auto-runs check on page load when API key + backend URL are present.
+7. Shows a prominent alert banner: fraud suspected / new user / returning user.
 
 > Security: Keep your Supabase service role key and Fingerprint Server API key in backend only.
 
@@ -62,6 +72,13 @@ npm run dev
 API base URL (local):
 - `http://localhost:3000`
 
+If port 3000 is already in use:
+
+```powershell
+$env:PORT=3100
+npm run dev
+```
+
 ## 4) Verify it works
 
 1. Click **Run check**.
@@ -69,6 +86,7 @@ API base URL (local):
 3. Confirm **Fingerprint Raw Result** contains JSON with `visitorId` and `requestId`.
 4. If you have backend running, confirm **Backend response** shows `isNewUser` and `riskLabel`.
 5. Run check twice with same browser, second response should return `isNewUser: false` and increased `visitCount`.
+6. If risky signals are present (bot/tor/vpn/proxy/incognito), verify **Live Decision** shows fraud alert and high score.
 
 Troubleshooting:
 - If blocked or empty result, disable ad blocker and try again.
@@ -129,6 +147,7 @@ Render deploy steps for backend:
   - `SUPABASE_URL`
   - `SUPABASE_SERVICE_ROLE_KEY`
   - `ALLOWED_ORIGINS` (your frontend URL)
+  - (optional) `FINGERPRINT_SERVER_API_KEY`
 5. Deploy and test `GET /health`.
 6. Put deployed URL in frontend Backend endpoint field.
 
@@ -138,3 +157,9 @@ Before collecting fingerprint data:
 - Add privacy policy disclosure.
 - Add consent where required by local law (GDPR/ePrivacy etc.).
 - Define retention period for fingerprint-related records.
+
+## 10) Security checklist
+
+- Rotate any previously exposed DB passwords or service keys.
+- Never put `SUPABASE_SERVICE_ROLE_KEY` in frontend.
+- Keep only Fingerprint public key in frontend; keep server key in backend env.

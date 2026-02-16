@@ -36,6 +36,10 @@ h1 {
   margin-top: 14px;
 }
 
+.alert-card {
+  border-color: #334155;
+}
+
 h2 {
   margin-top: 0;
   font-size: 18px;
@@ -93,6 +97,58 @@ button:disabled {
 .signal-key {
   color: #94a3b8;
   margin-right: 8px;
+}
+
+.risk-alert {
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  font-weight: 600;
+}
+
+.risk-neutral {
+  background: #0b1220;
+  border-color: #334155;
+}
+
+.risk-low {
+  background: #052e16;
+  border-color: #166534;
+}
+
+.risk-medium {
+  background: #3f2d04;
+  border-color: #92400e;
+}
+
+.risk-high {
+  background: #3f0b0b;
+  border-color: #b91c1c;
+}
+
+.metrics {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.metric-item {
+  background: #0b1220;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.metric-label {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.metric-value {
+  margin-top: 4px;
+  font-size: 16px;
+  font-weight: 700;
 }
 
 pre {
