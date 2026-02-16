@@ -23,6 +23,8 @@ const STORAGE_KEYS = {
   linkedId: "fp_linked_id",
 };
 
+const OPERATION_TIMEOUT_MS = 15000;
+
 const pretty = (value) => JSON.stringify(value, null, 2);
 
 function getClientSignals() {
@@ -55,6 +57,21 @@ function setLoadingState(isLoading) {
   runCheckButton.disabled = isLoading;
   runCheckButton.classList.toggle("is-loading", isLoading);
   runCheckLabel.textContent = isLoading ? "Checking..." : "Run check";
+}
+
+async function withTimeout(promise, label) {
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${OPERATION_TIMEOUT_MS / 1000}s`));
+    }, OPERATION_TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 function setRiskAlert(level, text) {
@@ -200,6 +217,10 @@ async function loadFingerprintAgent(apiKey, region) {
 }
 
 async function runCheck() {
+  if (runCheckButton.disabled) {
+    return;
+  }
+
   const apiKey = apiKeyInput.value.trim();
   const region = regionInput.value;
   const backendUrl = backendUrlInput.value.trim();
@@ -216,15 +237,18 @@ async function runCheck() {
   setSummary("Running FingerprintJS Pro check...");
 
   try {
-    const fp = await loadFingerprintAgent(apiKey, region);
+    const fp = await withTimeout(loadFingerprintAgent(apiKey, region), "Fingerprint agent load");
 
-    const fpResult = await fp.get({
-      extendedResult: true,
-      linkedId: linkedId || undefined,
-      tag: {
-        source: "manual-check-ui",
-      },
-    });
+    const fpResult = await withTimeout(
+      fp.get({
+        extendedResult: true,
+        linkedId: linkedId || undefined,
+        tag: {
+          source: "manual-check-ui",
+        },
+      }),
+      "Fingerprint identify request",
+    );
 
     fpResultView.textContent = pretty(fpResult);
     renderSignals(fpResult);
@@ -245,13 +269,22 @@ async function runCheck() {
       return;
     }
 
-    const response = await fetch(backendUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
+    const abortController = new AbortController();
+    const abortTimer = setTimeout(() => abortController.abort(), OPERATION_TIMEOUT_MS);
+    let response;
+
+    try {
+      response = await fetch(backendUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+        signal: abortController.signal,
+      });
+    } finally {
+      clearTimeout(abortTimer);
+    }
 
     const responseJson = await response.json();
     responseView.textContent = pretty(responseJson);
