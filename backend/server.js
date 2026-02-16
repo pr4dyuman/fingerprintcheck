@@ -16,19 +16,41 @@ const frontendRoot = path.resolve(__dirname, "..");
 const frontendIndexPath = path.join(frontendRoot, "index.html");
 const hasFrontendAssets = existsSync(frontendIndexPath);
 
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || "*")
+function normalizeOrigin(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\/+$/, "");
+}
+
+const configuredOrigins = (process.env.ALLOWED_ORIGINS || "*")
   .split(",")
-  .map((item) => item.trim())
+  .map((item) => normalizeOrigin(item))
   .filter(Boolean);
+
+const renderExternalUrl = normalizeOrigin(process.env.RENDER_EXTERNAL_URL);
+if (renderExternalUrl && !configuredOrigins.includes(renderExternalUrl)) {
+  configuredOrigins.push(renderExternalUrl);
+}
+
+const allowAllOrigins = configuredOrigins.includes("*");
+const allowedOrigins = new Set(configuredOrigins.filter((origin) => origin !== "*"));
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes("*") || allowedOrigins.includes(origin)) {
+      if (!origin || allowAllOrigins) {
         callback(null, true);
         return;
       }
-      callback(new Error("Origin not allowed by CORS"));
+
+      const normalizedRequestOrigin = normalizeOrigin(origin);
+      if (allowedOrigins.has(normalizedRequestOrigin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(null, false);
     },
   }),
 );
