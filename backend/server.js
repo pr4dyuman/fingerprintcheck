@@ -143,6 +143,18 @@ app.get("/health", (_req, res) => {
   });
 });
 
+app.get("/", (_req, res) => {
+  res.json({
+    ok: true,
+    service: "fingerprint-check-backend",
+    message: "Backend is running",
+    endpoints: {
+      health: "/health",
+      trackVisitor: "/api/track-visitor",
+    },
+  });
+});
+
 app.post("/api/track-visitor", async (req, res) => {
   try {
     if (!supabase) {
