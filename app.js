@@ -17,7 +17,6 @@ const legitimacyScoreView = document.getElementById("legitimacyScore");
 const riskScoreView = document.getElementById("riskScore");
 
 const STORAGE_KEYS = {
-  apiKey: "fp_api_key",
   region: "fp_region",
   backendUrl: "fp_backend_url",
   linkedId: "fp_linked_id",
@@ -137,21 +136,16 @@ function renderBackendDecision(responseJson) {
 }
 
 function persistSettings() {
-  localStorage.setItem(STORAGE_KEYS.apiKey, apiKeyInput.value.trim());
   localStorage.setItem(STORAGE_KEYS.region, regionInput.value);
   localStorage.setItem(STORAGE_KEYS.backendUrl, backendUrlInput.value.trim());
   localStorage.setItem(STORAGE_KEYS.linkedId, linkedIdInput.value.trim());
 }
 
 function loadSettings() {
-  const apiKey = localStorage.getItem(STORAGE_KEYS.apiKey);
   const region = localStorage.getItem(STORAGE_KEYS.region);
   const backendUrl = localStorage.getItem(STORAGE_KEYS.backendUrl);
   const linkedId = localStorage.getItem(STORAGE_KEYS.linkedId);
 
-  if (apiKey) {
-    apiKeyInput.value = apiKey;
-  }
   if (region) {
     regionInput.value = region;
   }
@@ -321,8 +315,3 @@ backendUrlInput.addEventListener("change", persistSettings);
 linkedIdInput.addEventListener("change", persistSettings);
 
 loadSettings();
-
-if (apiKeyInput.value.trim() && backendUrlInput.value.trim()) {
-  setSummary("Auto-checking this visit...");
-  runCheck();
-}
