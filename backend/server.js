@@ -35,6 +35,8 @@ if (renderExternalUrl && !configuredOrigins.includes(renderExternalUrl)) {
 
 const allowAllOrigins = configuredOrigins.includes("*");
 const allowedOrigins = new Set(configuredOrigins.filter((origin) => origin !== "*"));
+const PROFILE_MATCH_THRESHOLD = 70;
+const RECENT_PROFILE_LOOKUP_LIMIT = 300;
 
 app.use(
   cors({
@@ -95,7 +97,48 @@ function toBool(value) {
   return false;
 }
 
-function calcRiskLabel(payload, existing) {
+function calcSignalMatchScore(currentSignals, storedSignals, currentIp, storedIp, currentUserAgent, storedUserAgent) {
+  let score = 0;
+
+  const currentScreen = currentSignals?.screen || {};
+  const storedScreen = storedSignals?.screen || {};
+
+  if (currentUserAgent && storedUserAgent && currentUserAgent === storedUserAgent) {
+    score += 40;
+  }
+  if (currentSignals?.platform && storedSignals?.platform && currentSignals.platform === storedSignals.platform) {
+    score += 10;
+  }
+  if (currentSignals?.language && storedSignals?.language && currentSignals.language === storedSignals.language) {
+    score += 8;
+  }
+  if (currentSignals?.timezone && storedSignals?.timezone && currentSignals.timezone === storedSignals.timezone) {
+    score += 12;
+  }
+  if (currentScreen?.width && storedScreen?.width && currentScreen.width === storedScreen.width) {
+    score += 8;
+  }
+  if (currentScreen?.height && storedScreen?.height && currentScreen.height === storedScreen.height) {
+    score += 8;
+  }
+  if (
+    currentSignals?.hardwareConcurrency &&
+    storedSignals?.hardwareConcurrency &&
+    currentSignals.hardwareConcurrency === storedSignals.hardwareConcurrency
+  ) {
+    score += 7;
+  }
+  if (currentSignals?.deviceMemory && storedSignals?.deviceMemory && currentSignals.deviceMemory === storedSignals.deviceMemory) {
+    score += 7;
+  }
+  if (currentIp && storedIp && currentIp === storedIp) {
+    score += 15;
+  }
+
+  return Math.min(100, score);
+}
+
+function calcRiskLabel(payload, existing, context = {}) {
   const fpResult = payload.fpResult || {};
   const clientSignals = payload.clientSignals || {};
   const confidenceScore = Number(fpResult?.confidence?.score || 0);
@@ -128,9 +171,31 @@ function calcRiskLabel(payload, existing) {
     score += 10;
     reasons.push("incognito_mode");
   }
-  if (confidenceScore > 0 && confidenceScore < 0.8) {
-    score += 10;
+  if (confidenceScore > 0 && confidenceScore < 0.9) {
+    score += 15;
     reasons.push("low_confidence");
+  }
+  if (confidenceScore > 0 && confidenceScore < 0.75) {
+    score += 15;
+    reasons.push("very_low_confidence");
+  }
+
+  if (existing) {
+    score += 35;
+    reasons.push("previously_seen_profile");
+  }
+
+  if (context?.matchedBy && context.matchedBy !== "visitor_id") {
+    score += 18;
+    reasons.push(`matched_by_${context.matchedBy}`);
+  }
+
+  if (Number(context?.sameIpRecentCount || 0) >= 3) {
+    score += 25;
+    reasons.push("ip_velocity_high");
+  } else if (Number(context?.sameIpRecentCount || 0) >= 2) {
+    score += 12;
+    reasons.push("ip_velocity_medium");
   }
 
   const lastIp = existing?.last_ip || null;
@@ -140,12 +205,12 @@ function calcRiskLabel(payload, existing) {
 
   if (existing) {
     if (lastIp && currentIp && lastIp !== currentIp) {
-      score += 6;
+      score += 10;
       reasons.push("ip_changed_from_last_visit");
     }
 
     if (lastUserAgent && currentUserAgent && lastUserAgent !== currentUserAgent) {
-      score += 8;
+      score += 12;
       reasons.push("user_agent_changed_from_last_visit");
     }
 
@@ -156,17 +221,29 @@ function calcRiskLabel(payload, existing) {
   }
 
   const noHardRiskFlags = !isBot && !isTor && !isVpn && !isProxy && !isIncognito;
-  if (existing && confidenceScore >= 0.95 && noHardRiskFlags) {
-    score = Math.max(0, score - 8);
+  if (existing && confidenceScore >= 0.98 && noHardRiskFlags && Number(context?.sameIpRecentCount || 0) <= 1) {
+    score = Math.max(0, score - 5);
     reasons.push("stable_returning_profile");
   }
 
   score = Math.max(0, Math.min(score, 100));
 
-  const riskLabel = score >= 60 ? "high" : score >= 25 ? "medium" : "low";
+  const riskLabel = score >= 45 ? "high" : score >= 20 ? "medium" : "low";
   const isFraudSuspected = riskLabel === "high";
-  const decision = isFraudSuspected ? "block_or_review" : riskLabel === "medium" ? "review" : "allow";
-  return { riskScore: score, riskLabel, reasons, confidenceScore, isFraudSuspected, decision };
+  const isReferralEligible = !existing && riskLabel === "low";
+  const decision = isReferralEligible ? "allow" : isFraudSuspected ? "deny_referral" : "review";
+  const legitimacyScore = Math.max(0, 100 - score);
+
+  return {
+    riskScore: score,
+    legitimacyScore,
+    riskLabel,
+    reasons,
+    confidenceScore,
+    isFraudSuspected,
+    decision,
+    isReferralEligible,
+  };
 }
 
 app.get("/health", (_req, res) => {
@@ -206,6 +283,9 @@ app.post("/api/track-visitor", async (req, res) => {
 
     const { fpResult, clientSignals } = req.body || {};
     const visitorId = fpResult?.visitorId;
+    const linkedId = fpResult?.linkedId || null;
+    const currentIp = fpResult?.ip || null;
+    const currentUserAgent = clientSignals?.userAgent || null;
 
     if (!visitorId || typeof visitorId !== "string") {
       res.status(400).json({
@@ -215,9 +295,11 @@ app.post("/api/track-visitor", async (req, res) => {
       return;
     }
 
-    const { data: existing, error: selectError } = await supabase
+    let matchedBy = "visitor_id";
+
+    const { data: byVisitor, error: selectError } = await supabase
       .from("visitor_profiles")
-      .select("visitor_id, visit_count, last_ip, last_user_agent, risk_label, risk_score")
+      .select("visitor_id, visit_count, last_ip, last_user_agent, risk_label, risk_score, linked_id, raw_client_signals")
       .eq("visitor_id", visitorId)
       .maybeSingle();
 
@@ -225,24 +307,112 @@ app.post("/api/track-visitor", async (req, res) => {
       throw selectError;
     }
 
+    let existing = byVisitor;
+
+    if (!existing && linkedId) {
+      const { data: byLinkedId, error: linkedError } = await supabase
+        .from("visitor_profiles")
+        .select("visitor_id, visit_count, last_ip, last_user_agent, risk_label, risk_score, linked_id, raw_client_signals")
+        .eq("linked_id", linkedId)
+        .order("last_seen_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (linkedError) {
+        throw linkedError;
+      }
+
+      if (byLinkedId) {
+        existing = byLinkedId;
+        matchedBy = "linked_id";
+      }
+    }
+
+    if (!existing) {
+      const { data: recentProfiles, error: recentError } = await supabase
+        .from("visitor_profiles")
+        .select("visitor_id, visit_count, last_ip, last_user_agent, risk_label, risk_score, linked_id, raw_client_signals")
+        .order("last_seen_at", { ascending: false })
+        .limit(RECENT_PROFILE_LOOKUP_LIMIT);
+
+      if (recentError) {
+        throw recentError;
+      }
+
+      let bestMatch = null;
+      let bestScore = 0;
+
+      for (const row of recentProfiles || []) {
+        const rowSignals = row?.raw_client_signals || {};
+        const score = calcSignalMatchScore(
+          clientSignals,
+          rowSignals,
+          currentIp,
+          row?.last_ip || null,
+          currentUserAgent,
+          row?.last_user_agent || null,
+        );
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestMatch = row;
+        }
+      }
+
+      if (bestMatch && bestScore >= PROFILE_MATCH_THRESHOLD) {
+        existing = bestMatch;
+        matchedBy = `signal_similarity_${bestScore}`;
+      }
+    }
+
+    let sameIpRecentCount = 0;
+    if (currentIp) {
+      const sinceIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { count, error: countError } = await supabase
+        .from("visitor_profiles")
+        .select("visitor_id", { count: "exact", head: true })
+        .eq("last_ip", currentIp)
+        .gte("last_seen_at", sinceIso);
+
+      if (countError) {
+        throw countError;
+      }
+
+      sameIpRecentCount = Number(count || 0);
+    }
+
     const isNewUser = !existing;
     const nextCount = existing ? Number(existing.visit_count || 0) + 1 : 1;
+    const storageVisitorId = existing ? existing.visitor_id : visitorId;
 
-    const { riskLabel, riskScore, reasons, confidenceScore, isFraudSuspected, decision } = calcRiskLabel(
+    const {
+      riskLabel,
+      riskScore,
+      legitimacyScore,
+      reasons,
+      confidenceScore,
+      isFraudSuspected,
+      decision,
+      isReferralEligible,
+    } = calcRiskLabel(
       {
         fpResult,
         clientSignals,
       },
       existing,
+      {
+        matchedBy,
+        sameIpRecentCount,
+      },
     );
 
     const upsertRow = {
-      visitor_id: visitorId,
+      visitor_id: storageVisitorId,
       first_seen_at: existing ? undefined : new Date().toISOString(),
       last_seen_at: new Date().toISOString(),
       visit_count: nextCount,
-      linked_id: fpResult?.linkedId || null,
-      last_ip: fpResult?.ip || null,
+      linked_id: linkedId,
+      last_ip: currentIp,
       last_user_agent: clientSignals?.userAgent || null,
       risk_label: riskLabel,
       risk_score: riskScore,
@@ -264,11 +434,15 @@ app.post("/api/track-visitor", async (req, res) => {
     res.json({
       ok: true,
       isNewUser,
-      visitorId,
+      visitorId: storageVisitorId,
+      detectedVisitorId: visitorId,
+      matchedBy,
       riskLabel,
       riskScore,
+      legitimacyScore,
       isFraudSuspected,
       decision,
+      isReferralEligible,
       reasons,
       visitCount: nextCount,
     });
