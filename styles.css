@@ -1,0 +1,105 @@
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Segoe UI, Roboto, Arial, sans-serif;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+.container {
+  max-width: 840px;
+  margin: 24px auto;
+  padding: 0 16px 40px;
+}
+
+h1 {
+  margin-bottom: 4px;
+}
+
+.subtitle {
+  margin-top: 0;
+  color: #94a3b8;
+}
+
+.card {
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 14px;
+}
+
+h2 {
+  margin-top: 0;
+  font-size: 18px;
+}
+
+label {
+  display: block;
+  margin-bottom: 12px;
+  color: #cbd5e1;
+}
+
+input,
+select,
+button {
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  background: #0b1220;
+  color: #e2e8f0;
+}
+
+button {
+  cursor: pointer;
+  background: #2563eb;
+  border: none;
+  font-weight: 600;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.summary {
+  padding: 10px;
+  border-radius: 8px;
+  background: #0b1220;
+  border: 1px solid #334155;
+}
+
+.signal-list {
+  display: grid;
+  gap: 8px;
+}
+
+.signal-item {
+  background: #0b1220;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.signal-key {
+  color: #94a3b8;
+  margin-right: 8px;
+}
+
+pre {
+  background: #020617;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  padding: 12px;
+  overflow: auto;
+  max-height: 320px;
+}

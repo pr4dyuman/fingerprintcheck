@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FingerprintJS Pro Visitor Check</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>FingerprintJS Pro Check</h1>
+      <p class="subtitle">
+        Collect enhanced browser/device data and send it to your backend for risk checks.
+      </p>
+
+      <section class="card">
+        <h2>Configuration</h2>
+        <label>
+          FingerprintJS Pro API key
+          <input id="apiKey" type="text" value="Ddnd6iWNTCnbLtxGlhxn" />
+        </label>
+
+        <label>
+          Region
+          <select id="region">
+            <option value="us">us</option>
+            <option value="eu">eu</option>
+            <option value="ap" selected>ap</option>
+          </select>
+        </label>
+
+        <label>
+          Backend endpoint
+          <input id="backendUrl" type="text" placeholder="http://localhost:3000/api/track-visitor" />
+        </label>
+
+        <label>
+          Linked ID (optional, e.g. user/email hash)
+          <input id="linkedId" type="text" placeholder="user-123" />
+        </label>
+
+        <button id="runCheck">Run check</button>
+      </section>
+
+      <section class="card">
+        <h2>Result Summary</h2>
+        <div id="summary" class="summary">No check run yet.</div>
+      </section>
+
+      <section class="card">
+        <h2>Fingerprint Signals</h2>
+        <div id="signalList" class="signal-list">No data yet.</div>
+      </section>
+
+      <section class="card">
+        <h2>Fingerprint Raw Result</h2>
+        <pre id="fpResultView">{}</pre>
+      </section>
+
+      <section class="card">
+        <h2>Payload sent to backend</h2>
+        <pre id="payloadView">{}</pre>
+      </section>
+
+      <section class="card">
+        <h2>Backend response</h2>
+        <pre id="responseView">{}</pre>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
