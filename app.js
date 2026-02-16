@@ -4,6 +4,7 @@ const backendUrlInput = document.getElementById("backendUrl");
 const linkedIdInput = document.getElementById("linkedId");
 const runCheckButton = document.getElementById("runCheck");
 const runCheckLabel = document.getElementById("runCheckLabel");
+const configStatus = document.getElementById("configStatus");
 
 const summary = document.getElementById("summary");
 const signalList = document.getElementById("signalList");
@@ -25,6 +26,11 @@ const STORAGE_KEYS = {
 const OPERATION_TIMEOUT_MS = 15000;
 
 const pretty = (value) => JSON.stringify(value, null, 2);
+
+function setConfigStatus(text, status = "neutral") {
+  configStatus.textContent = text;
+  configStatus.className = `config-status config-status-${status}`;
+}
 
 function getClientSignals() {
   return {
@@ -210,6 +216,33 @@ async function loadFingerprintAgent(apiKey, region) {
   return FingerprintJS.load({ region });
 }
 
+async function loadBackendPublicConfig() {
+  try {
+    const response = await fetch(`${window.location.origin}/api/public-config`);
+    if (!response.ok) {
+      setConfigStatus("Could not load server config. Enter backend URL and check deployment env.", "warn");
+      return;
+    }
+
+    const configJson = await response.json();
+    const apiKey = String(configJson?.fingerprintPublicApiKey || "").trim();
+    const region = String(configJson?.fingerprintRegion || "").trim();
+
+    if (apiKey) {
+      apiKeyInput.value = apiKey;
+      setConfigStatus("Fingerprint public key loaded from backend environment.", "ok");
+    } else {
+      setConfigStatus("Missing FINGERPRINT_PUBLIC_API_KEY in backend env.", "warn");
+    }
+
+    if (region) {
+      regionInput.value = region;
+    }
+  } catch {
+    setConfigStatus("Could not fetch backend config. Check API URL and CORS settings.", "warn");
+  }
+}
+
 async function runCheck() {
   if (runCheckButton.disabled) {
     return;
@@ -223,7 +256,7 @@ async function runCheck() {
   persistSettings();
 
   if (!apiKey) {
-    setSummary("Enter your FingerprintJS Pro API key first.", "warn");
+    setSummary("Fingerprint key not loaded. Set FINGERPRINT_PUBLIC_API_KEY in backend env.", "warn");
     return;
   }
 
@@ -315,3 +348,4 @@ backendUrlInput.addEventListener("change", persistSettings);
 linkedIdInput.addEventListener("change", persistSettings);
 
 loadSettings();
+loadBackendPublicConfig();

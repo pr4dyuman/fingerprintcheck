@@ -37,6 +37,8 @@ const allowAllOrigins = configuredOrigins.includes("*");
 const allowedOrigins = new Set(configuredOrigins.filter((origin) => origin !== "*"));
 const PROFILE_MATCH_THRESHOLD = 70;
 const RECENT_PROFILE_LOOKUP_LIMIT = 300;
+const fingerprintPublicApiKey = process.env.FINGERPRINT_PUBLIC_API_KEY || "";
+const fingerprintRegion = process.env.FINGERPRINT_REGION || "ap";
 
 app.use(
   cors({
@@ -251,6 +253,15 @@ app.get("/health", (_req, res) => {
     ok: true,
     service: "fingerprint-check-backend",
     supabaseConfigured: Boolean(supabase),
+    fingerprintConfigPresent: Boolean(fingerprintPublicApiKey),
+  });
+});
+
+app.get("/api/public-config", (_req, res) => {
+  res.json({
+    ok: true,
+    fingerprintPublicApiKey,
+    fingerprintRegion,
   });
 });
 

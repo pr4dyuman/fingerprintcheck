@@ -38,10 +38,8 @@
 
       <section class="card">
         <h2>Configuration</h2>
-        <label>
-          FingerprintJS Pro API key
-          <input id="apiKey" type="password" placeholder="paste public API key" autocomplete="off" />
-        </label>
+        <input id="apiKey" type="hidden" />
+        <div id="configStatus" class="config-status">Loading Fingerprint configuration...</div>
 
         <label>
           Region
