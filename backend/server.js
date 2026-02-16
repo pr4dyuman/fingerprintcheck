@@ -2,11 +2,19 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
+import path from "path";
+import { fileURLToPath } from "url";
+import { existsSync } from "fs";
 
 dotenv.config();
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const frontendRoot = path.resolve(__dirname, "..");
+const frontendIndexPath = path.join(frontendRoot, "index.html");
+const hasFrontendAssets = existsSync(frontendIndexPath);
 
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || "*")
   .split(",")
@@ -25,6 +33,10 @@ app.use(
   }),
 );
 app.use(express.json({ limit: "1mb" }));
+
+if (hasFrontendAssets) {
+  app.use(express.static(frontendRoot));
+}
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -144,6 +156,11 @@ app.get("/health", (_req, res) => {
 });
 
 app.get("/", (_req, res) => {
+  if (hasFrontendAssets) {
+    res.sendFile(frontendIndexPath);
+    return;
+  }
+
   res.json({
     ok: true,
     service: "fingerprint-check-backend",

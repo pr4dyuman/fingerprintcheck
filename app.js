@@ -140,6 +140,8 @@ function loadSettings() {
   }
   if (backendUrl) {
     backendUrlInput.value = backendUrl;
+  } else {
+    backendUrlInput.value = `${window.location.origin}/api/track-visitor`;
   }
   if (linkedId) {
     linkedIdInput.value = linkedId;
