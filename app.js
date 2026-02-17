@@ -11,6 +11,7 @@ const signalList = document.getElementById("signalList");
 const fpResultView = document.getElementById("fpResultView");
 const payloadView = document.getElementById("payloadView");
 const responseView = document.getElementById("responseView");
+const backendFpResultView = document.getElementById("backendFpResultView");
 const riskAlert = document.getElementById("riskAlert");
 const isNewUserView = document.getElementById("isNewUser");
 const isLegitUserView = document.getElementById("isLegitUser");
@@ -292,6 +293,11 @@ async function runCheck() {
       responseView.textContent = pretty({
         info: "No backend URL provided. Only frontend result is shown.",
       });
+      if (backendFpResultView) {
+        backendFpResultView.textContent = pretty({
+          info: "No backend response. Enable backend URL to see stored JSON.",
+        });
+      }
       renderBackendDecision({ ok: false });
       return;
     }
@@ -316,6 +322,14 @@ async function runCheck() {
     const responseJson = await response.json();
     responseView.textContent = pretty(responseJson);
 
+    if (backendFpResultView) {
+      backendFpResultView.textContent = pretty(
+        responseJson?.rawFpResult || {
+          info: "rawFpResult not included. Set RETURN_RAW_FP_RESULT=true on the backend.",
+        },
+      );
+    }
+
     if (!response.ok) {
       setSummary(`Backend returned ${response.status}. Check response below.`, "warn");
       renderBackendDecision({ ok: false });
@@ -333,6 +347,11 @@ async function runCheck() {
     responseView.textContent = pretty({
       error: error.message,
     });
+    if (backendFpResultView) {
+      backendFpResultView.textContent = pretty({
+        error: error.message,
+      });
+    }
     setSummary(`Failed to run check: ${error.message}`, "warn");
     renderBackendDecision({ ok: false });
   } finally {

@@ -39,6 +39,7 @@ const PROFILE_MATCH_THRESHOLD = 70;
 const RECENT_PROFILE_LOOKUP_LIMIT = 300;
 const fingerprintPublicApiKey = process.env.FINGERPRINT_PUBLIC_API_KEY || "";
 const fingerprintRegion = process.env.FINGERPRINT_REGION || "ap";
+const returnRawFpResult = String(process.env.RETURN_RAW_FP_RESULT || "").toLowerCase() === "true";
 
 app.use(
   cors({
@@ -456,6 +457,7 @@ app.post("/api/track-visitor", async (req, res) => {
       isReferralEligible,
       reasons,
       visitCount: nextCount,
+      rawFpResult: returnRawFpResult ? fpResult : undefined,
     });
   } catch (error) {
     res.status(500).json({
