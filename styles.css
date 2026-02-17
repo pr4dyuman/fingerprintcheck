@@ -144,6 +144,16 @@ button.is-loading .button-spinner {
   padding: 10px;
 }
 
+.signal-item.signal-danger {
+  background: #3f0b0b;
+  border-color: #b91c1c;
+}
+
+.signal-item.signal-warn {
+  background: #3f2d04;
+  border-color: #92400e;
+}
+
 .signal-key {
   color: #94a3b8;
   margin-right: 8px;

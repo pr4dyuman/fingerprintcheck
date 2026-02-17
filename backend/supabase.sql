@@ -12,6 +12,7 @@ create table if not exists visitor_profiles (
   last_request_id text,
   raw_fp_result jsonb,
   raw_client_signals jsonb,
+  raw_server_event jsonb,
   updated_at timestamptz not null default now()
 );
 

@@ -39,7 +39,34 @@ const PROFILE_MATCH_THRESHOLD = 70;
 const RECENT_PROFILE_LOOKUP_LIMIT = 300;
 const fingerprintPublicApiKey = process.env.FINGERPRINT_PUBLIC_API_KEY || "";
 const fingerprintRegion = process.env.FINGERPRINT_REGION || "ap";
+const fingerprintServerApiKey = process.env.FINGERPRINT_SERVER_API_KEY || "";
 const returnRawFpResult = String(process.env.RETURN_RAW_FP_RESULT || "").toLowerCase() === "true";
+
+const REGION_API_BASE = {
+  us: "https://api.fpjs.io",
+  eu: "https://eu.api.fpjs.io",
+  ap: "https://ap.api.fpjs.io",
+};
+
+async function fetchServerEvent(requestId) {
+  if (!fingerprintServerApiKey) {
+    return { error: "FINGERPRINT_SERVER_API_KEY not set" };
+  }
+  const base = REGION_API_BASE[fingerprintRegion] || REGION_API_BASE.us;
+  const url = `${base}/events/${encodeURIComponent(requestId)}`;
+  try {
+    const resp = await fetch(url, {
+      headers: { "Auth-API-Key": fingerprintServerApiKey },
+    });
+    if (!resp.ok) {
+      const text = await resp.text();
+      return { error: `Server API ${resp.status}`, detail: text };
+    }
+    return await resp.json();
+  } catch (err) {
+    return { error: err.message };
+  }
+}
 
 app.use(
   cors({
@@ -141,15 +168,44 @@ function calcSignalMatchScore(currentSignals, storedSignals, currentIp, storedIp
   return Math.min(100, score);
 }
 
+function extractSmartSignals(serverEvent) {
+  if (!serverEvent || serverEvent.error) return {};
+  const p = serverEvent.products || {};
+  return {
+    vpn: p.vpn?.data,
+    proxy: p.proxy?.data,
+    tor: p.tor?.data,
+    ipBlocklist: p.ipBlocklist?.data,
+    bot: p.botd?.data?.bot,
+    tampering: p.tampering?.data,
+    virtualMachine: p.virtualMachine?.data,
+    highActivity: p.highActivity?.data,
+    locationSpoofing: p.locationSpoofing?.data,
+    suspectScore: p.suspectScore?.data,
+    remoteControl: p.remoteControl?.data,
+    velocity: p.velocity?.data,
+    developerTools: p.developerTools?.data,
+    rawDeviceAttributes: p.rawDeviceAttributes?.data,
+    clonedApp: p.clonedApp?.data,
+    factoryReset: p.factoryReset?.data,
+    jailbroken: p.jailbroken?.data,
+    frida: p.frida?.data,
+    privacySettings: p.privacySettings?.data,
+    ipInfo: p.ipInfo?.data,
+    identification: p.identification?.data,
+  };
+}
+
 function calcRiskLabel(payload, existing, context = {}) {
   const fpResult = payload.fpResult || {};
+  const smart = payload.smartSignals || {};
   const clientSignals = payload.clientSignals || {};
   const confidenceScore = Number(fpResult?.confidence?.score || 0);
   const isIncognito = toBool(fpResult.incognito);
-  const isVpn = toBool(fpResult.vpn);
-  const isProxy = toBool(fpResult.proxy);
-  const isTor = toBool(fpResult.tor);
-  const isBot = toBool(fpResult.bot);
+  const isVpn = toBool(smart.vpn?.result ?? fpResult.vpn);
+  const isProxy = toBool(smart.proxy?.result ?? fpResult.proxy);
+  const isTor = toBool(smart.tor?.result ?? fpResult.tor);
+  const isBot = toBool(smart.bot?.result ?? fpResult.bot);
 
   let score = 0;
   const reasons = [];
@@ -174,6 +230,71 @@ function calcRiskLabel(payload, existing, context = {}) {
     score += 10;
     reasons.push("incognito_mode");
   }
+
+  // Smart Signal: tampering
+  if (toBool(smart.tampering?.result)) {
+    score += 25;
+    reasons.push("tampering_detected");
+  }
+  // Smart Signal: virtual machine
+  if (toBool(smart.virtualMachine?.result)) {
+    score += 20;
+    reasons.push("virtual_machine_detected");
+  }
+  // Smart Signal: high activity device
+  if (smart.highActivity?.result === true || Number(smart.highActivity?.dailyRequests) > 100) {
+    score += 20;
+    reasons.push("high_activity_device");
+  }
+  // Smart Signal: location spoofing
+  if (toBool(smart.locationSpoofing?.result)) {
+    score += 20;
+    reasons.push("location_spoofing_detected");
+  }
+  // Smart Signal: remote control
+  if (toBool(smart.remoteControl?.result)) {
+    score += 25;
+    reasons.push("remote_control_detected");
+  }
+  // Smart Signal: suspect score
+  if (Number(smart.suspectScore?.result) >= 50) {
+    score += 20;
+    reasons.push("high_suspect_score");
+  }
+  // Smart Signal: developer tools open
+  if (toBool(smart.developerTools?.result)) {
+    score += 5;
+    reasons.push("developer_tools_open");
+  }
+  // Smart Signal: IP blocklist
+  if (toBool(smart.ipBlocklist?.result)) {
+    score += 25;
+    reasons.push("ip_blocklist");
+  }
+  // Smart Signal: jailbroken/rooted
+  if (toBool(smart.jailbroken?.result)) {
+    score += 20;
+    reasons.push("jailbroken_device");
+  }
+  // Smart Signal: frida instrumentation
+  if (toBool(smart.frida?.result)) {
+    score += 30;
+    reasons.push("frida_detected");
+  }
+  // Smart Signal: cloned app
+  if (toBool(smart.clonedApp?.result)) {
+    score += 25;
+    reasons.push("cloned_app_detected");
+  }
+  // Smart Signal: factory reset
+  if (smart.factoryReset?.timestamp) {
+    const daysSinceReset = (Date.now() - new Date(smart.factoryReset.timestamp).getTime()) / (1000 * 60 * 60 * 24);
+    if (daysSinceReset < 7) {
+      score += 15;
+      reasons.push("recent_factory_reset");
+    }
+  }
+
   if (confidenceScore > 0 && confidenceScore < 0.9) {
     score += 15;
     reasons.push("low_confidence");
@@ -397,6 +518,14 @@ app.post("/api/track-visitor", async (req, res) => {
     const nextCount = existing ? Number(existing.visit_count || 0) + 1 : 1;
     const storageVisitorId = existing ? existing.visitor_id : visitorId;
 
+    // Fetch full Smart Signals from Fingerprint Server API
+    let serverEvent = {};
+    let smartSignals = {};
+    if (fingerprintServerApiKey && fpResult?.requestId) {
+      serverEvent = await fetchServerEvent(fpResult.requestId);
+      smartSignals = extractSmartSignals(serverEvent);
+    }
+
     const {
       riskLabel,
       riskScore,
@@ -410,6 +539,7 @@ app.post("/api/track-visitor", async (req, res) => {
       {
         fpResult,
         clientSignals,
+        smartSignals,
       },
       existing,
       {
@@ -433,6 +563,7 @@ app.post("/api/track-visitor", async (req, res) => {
       updated_at: new Date().toISOString(),
       raw_fp_result: fpResult,
       raw_client_signals: clientSignals || {},
+      raw_server_event: serverEvent || {},
     };
 
     const { error: upsertError } = await supabase.from("visitor_profiles").upsert(upsertRow, {
@@ -457,6 +588,8 @@ app.post("/api/track-visitor", async (req, res) => {
       isReferralEligible,
       reasons,
       visitCount: nextCount,
+      smartSignals: Object.keys(smartSignals).length ? smartSignals : undefined,
+      serverEvent: returnRawFpResult ? serverEvent : undefined,
       rawFpResult: returnRawFpResult ? fpResult : undefined,
     });
   } catch (error) {

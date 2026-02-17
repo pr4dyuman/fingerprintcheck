@@ -188,28 +188,124 @@ function getFlag(fpResult, keyCandidates) {
   return undefined;
 }
 
-function renderSignals(fpResult) {
+function renderSignals(fpResult, smartSignals) {
+  const ss = smartSignals || {};
+
   const items = [
     ["Visitor ID", fpResult?.visitorId],
     ["Request ID", fpResult?.requestId],
     ["Confidence", fpResult?.confidence?.score],
     ["Incognito", getFlag(fpResult, ["incognito", "incognitoMode"])],
-    ["VPN", getFlag(fpResult, ["vpn", "isVPN"])],
-    ["Proxy", getFlag(fpResult, ["proxy", "isProxy"])],
-    ["Tor", getFlag(fpResult, ["tor", "isTor"])],
-    ["Bot", getFlag(fpResult, ["bot", "isBot"])],
     ["Browser", fpResult?.browserName],
+    ["Browser Version", fpResult?.browserVersion],
     ["OS", fpResult?.os],
+    ["OS Version", fpResult?.osVersion],
+    ["Device", fpResult?.device],
     ["IP", fpResult?.ip],
-    ["Country", fpResult?.ipLocation?.country?.name],
+    ["First Seen", fpResult?.firstSeenAt?.subscription],
+    ["Last Seen", fpResult?.lastSeenAt?.subscription],
   ];
 
-  signalList.innerHTML = items
+  // Smart Signal items
+  const smartItems = [
+    ["VPN", ss.vpn?.result, ss.vpn],
+    ["Proxy", ss.proxy?.result, ss.proxy],
+    ["Tor", ss.tor?.result, ss.tor],
+    ["IP Blocklist", ss.ipBlocklist?.result, ss.ipBlocklist],
+    ["Bot", ss.bot?.result, ss.bot],
+    ["Tampering", ss.tampering?.result, ss.tampering],
+    ["Virtual Machine", ss.virtualMachine?.result, ss.virtualMachine],
+    ["High Activity", ss.highActivity?.result, ss.highActivity],
+    ["Location Spoofing", ss.locationSpoofing?.result, ss.locationSpoofing],
+    ["Suspect Score", ss.suspectScore?.result, ss.suspectScore],
+    ["Remote Control", ss.remoteControl?.result, ss.remoteControl],
+    ["Developer Tools", ss.developerTools?.result, ss.developerTools],
+    ["Jailbroken", ss.jailbroken?.result, ss.jailbroken],
+    ["Frida", ss.frida?.result, ss.frida],
+    ["Cloned App", ss.clonedApp?.result, ss.clonedApp],
+    ["Factory Reset", ss.factoryReset?.timestamp, ss.factoryReset],
+    ["Privacy Settings", ss.privacySettings?.result, ss.privacySettings],
+  ];
+
+  // IP / location info from server event
+  const ipInfo = ss.ipInfo || ss.identification?.ipLocation || {};
+  const locationItems = [
+    ["Country", ipInfo?.v4?.geolocation?.country?.name || ipInfo?.country?.name],
+    ["City", ipInfo?.v4?.geolocation?.city?.name || ipInfo?.city?.name],
+    ["Latitude", ipInfo?.v4?.geolocation?.latitude || ipInfo?.latitude],
+    ["Longitude", ipInfo?.v4?.geolocation?.longitude || ipInfo?.longitude],
+    ["ISP", ipInfo?.v4?.isp || ipInfo?.isp],
+    ["ASN", ipInfo?.v4?.asn?.name || ipInfo?.asn?.name],
+    ["Data Center", ipInfo?.v4?.datacenter?.name || ipInfo?.datacenter?.name],
+  ];
+
+  // Velocity
+  const vel = ss.velocity || {};
+  const velocityItems = [
+    ["Distinct IPs", vel?.distinctIp?.intervals?.["1h"]],
+    ["Distinct Linked IDs", vel?.distinctLinkedId?.intervals?.["1h"]],
+    ["Distinct Countries", vel?.distinctCountry?.intervals?.["1h"]],
+  ];
+
+  let html = "<h3 style='margin:0 0 8px;font-size:14px;color:#94a3b8'>Identification</h3>";
+  html += items
     .map(
       ([label, value]) =>
         `<div class="signal-item"><span class="signal-key">${label}:</span><span>${toText(value)}</span></div>`,
     )
     .join("");
+
+  html += "<h3 style='margin:16px 0 8px;font-size:14px;color:#94a3b8'>Smart Signals</h3>";
+  html += smartItems
+    .map(([label, value, raw]) => {
+      const badge = getBadgeClass(label, value);
+      const detail = raw && typeof raw === "object" ? ` <span style="color:#64748b;font-size:12px">${compactJson(raw)}</span>` : "";
+      return `<div class="signal-item ${badge}"><span class="signal-key">${label}:</span><span>${toText(value)}${detail}</span></div>`;
+    })
+    .join("");
+
+  html += "<h3 style='margin:16px 0 8px;font-size:14px;color:#94a3b8'>IP &amp; Location</h3>";
+  html += locationItems
+    .map(
+      ([label, value]) =>
+        `<div class="signal-item"><span class="signal-key">${label}:</span><span>${toText(value)}</span></div>`,
+    )
+    .join("");
+
+  html += "<h3 style='margin:16px 0 8px;font-size:14px;color:#94a3b8'>Velocity (1h window)</h3>";
+  html += velocityItems
+    .map(
+      ([label, value]) =>
+        `<div class="signal-item"><span class="signal-key">${label}:</span><span>${toText(value)}</span></div>`,
+    )
+    .join("");
+
+  signalList.innerHTML = html;
+}
+
+function getBadgeClass(label, value) {
+  if (value === undefined || value === null || value === "unknown") return "";
+  const dangerSignals = ["VPN", "Proxy", "Tor", "IP Blocklist", "Bot", "Tampering", "Virtual Machine",
+    "Location Spoofing", "Remote Control", "Jailbroken", "Frida", "Cloned App"];
+  if (dangerSignals.includes(label) && toBoolFrontend(value)) return "signal-danger";
+  if (label === "Suspect Score" && Number(value) >= 50) return "signal-danger";
+  if (label === "High Activity" && toBoolFrontend(value)) return "signal-warn";
+  if (label === "Developer Tools" && toBoolFrontend(value)) return "signal-warn";
+  return "";
+}
+
+function toBoolFrontend(v) {
+  if (typeof v === "boolean") return v;
+  if (v === "yes" || v === "true") return true;
+  if (v && typeof v === "object" && typeof v.result === "boolean") return v.result;
+  return false;
+}
+
+function compactJson(obj) {
+  try {
+    const s = JSON.stringify(obj);
+    return s.length > 120 ? s.slice(0, 117) + "..." : s;
+  } catch { return ""; }
 }
 
 async function loadFingerprintAgent(apiKey, region) {
@@ -279,7 +375,7 @@ async function runCheck() {
     );
 
     fpResultView.textContent = pretty(fpResult);
-    renderSignals(fpResult);
+    renderSignals(fpResult, null);
 
     const payload = {
       fpResult,
@@ -324,10 +420,15 @@ async function runCheck() {
 
     if (backendFpResultView) {
       backendFpResultView.textContent = pretty(
-        responseJson?.rawFpResult || {
-          info: "rawFpResult not included. Set RETURN_RAW_FP_RESULT=true on the backend.",
+        responseJson?.serverEvent || responseJson?.rawFpResult || {
+          info: "Server event not included. Set FINGERPRINT_SERVER_API_KEY and RETURN_RAW_FP_RESULT=true on the backend.",
         },
       );
+    }
+
+    // Re-render signals with Smart Signals from backend
+    if (responseJson?.smartSignals) {
+      renderSignals(fpResult, responseJson.smartSignals);
     }
 
     if (!response.ok) {
