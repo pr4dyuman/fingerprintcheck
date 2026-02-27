@@ -305,13 +305,7 @@ function calcRiskLabel(payload, existing, context = {}) {
   }
 
   if (existing) {
-    score += 35;
-    reasons.push("previously_seen_profile");
-  }
-
-  if (context?.matchedBy && context.matchedBy !== "visitor_id") {
-    score += 18;
-    reasons.push(`matched_by_${context.matchedBy}`);
+    reasons.push("returning_user");
   }
 
   if (Number(context?.sameIpRecentCount || 0) >= 3) {
@@ -352,7 +346,7 @@ function calcRiskLabel(payload, existing, context = {}) {
 
   score = Math.max(0, Math.min(score, 100));
 
-  const riskLabel = score >= 45 ? "high" : score >= 20 ? "medium" : "low";
+  const riskLabel = score >= 60 ? "high" : score >= 25 ? "medium" : "low";
   const isFraudSuspected = riskLabel === "high";
   const isReferralEligible = !existing && riskLabel === "low";
   const decision = isReferralEligible ? "allow" : isFraudSuspected ? "deny_referral" : "review";
